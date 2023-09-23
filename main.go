@@ -40,7 +40,7 @@ func init() {
 		"token_uri":                   os.Getenv("FIREBASE_TOKEN_URL"),
 		"auth_provider_x509_cert_url": os.Getenv("FIREBASE_AUTH_PROVIDER_X509_CERT_URL"),
 		"client_x509_cert_url":        os.Getenv("FIREBASE_CLIENT_X509_CERT_URL"),
-		"universe_domain":             "googleapis.com",
+		"universe_domain":             os.Getenv("FIREBASE_UNIVERSE_DOMAIN"),
 	}
 
 	// Marshal the Firebase configuration map to JSON
@@ -112,93 +112,47 @@ func main() {
 		})
 	})
 
-	// Endpoint untuk upload file tanpa autentikasi
-	r.POST("/upload-unsigned", func(c *gin.Context) {
-		// Dalam endpoint ini, Anda dapat menerima file menggunakan multipart/form-data.
-		file, err := c.FormFile("file")
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": err.Error(),
-			})
-			return
-		}
-
-		// Baca file yang diupload
-		src, err := file.Open()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": err.Error(),
-			})
-			return
-		}
-		defer src.Close()
-
-		// Anda dapat menggunakan utils.DecodeBase64WithFormat jika diperlukan
-		// atau langsung mengambil data biner dari src.
-
-		// Lakukan proses upload tanpa autentikasi di sini.
-
-		// Setelah upload selesai, kirimkan respons yang sesuai.
-		c.JSON(http.StatusOK, gin.H{
-			"message": "success",
-			"file":    file.Filename,
-		})
-	})
-
-	// Endpoint untuk mengunduh file dengan service account
-	r.GET("/download-signed/:filename", func(c *gin.Context) {
-		// Pastikan Anda memiliki autentikasi menggunakan serviceAccount.json
-		// Sebelum mengunduh file, Anda perlu memeriksa kredensial.
-
-		// Dapatkan nama file dari parameter URL
-		filename := c.Param("filename")
-
-		// Lakukan proses pengambilan file menggunakan service account di sini.
-		// Misalnya, membaca file dari penyimpanan GCS.
-
-		// Set header untuk mengindikasikan tipe konten dan nama file yang akan diunduh
-		c.Header("Content-Description", "File Transfer")
-		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
-		c.Header("Content-Type", "application/octet-stream")
-
-		// Baca file dan kirimkannya sebagai respons
-		// Gantilah ini dengan kode yang sesuai dengan penyimpanan Anda.
-		fileData := []byte{} // Isi dengan data file yang ingin Anda kirimkan
-		c.Data(http.StatusOK, "application/octet-stream", fileData)
-	})
-
 	// Endpoint untuk mengunduh file tanpa autentikasi
-	r.GET("/download-unsigned/:filename", func(c *gin.Context) {
+	r.GET("/url/:filename", func(c *gin.Context) {
 		// Dapatkan nama file dari parameter URL
 		filename := c.Param("filename")
 
-		// Lakukan proses pengambilan file tanpa autentikasi di sini.
-		// Misalnya, membaca file dari penyimpanan GCS.
-
-		// Set header untuk mengindikasikan tipe konten dan nama file yang akan diunduh
-		c.Header("Content-Description", "File Transfer")
-		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
-		c.Header("Content-Type", "application/octet-stream")
-
-		// Baca file dan kirimkannya sebagai respons
-		// Gantilah ini dengan kode yang sesuai dengan penyimpanan Anda.
-		fileData := []byte{} // Isi dengan data file yang ingin Anda kirimkan
-		c.Data(http.StatusOK, "application/octet-stream", fileData)
-	})
-
-	r.GET("/download-url/:filename", func(c *gin.Context) {
-		// Get the filename from the URL parameter
-		filename := c.Param("filename")
-
-		// Call the method to generate a signed URL for downloading the file
-		url, err := GenerateDownloadURL(filename, client) // Pass the initialized client
+		signedURL, rawURL, err := GenerateURL(filename, client)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
-		// Return the signed URL as a response
-		c.JSON(http.StatusOK, gin.H{"url": url})
+		// Return the signed and raw URLs as a response
+		c.JSON(http.StatusOK, gin.H{
+			"signed_url": signedURL,
+			"raw_url":    rawURL,
+		})
+	})
+
+	r.GET("/download-signed/:filename", func(c *gin.Context) {
+		// Get the filename from the URL parameter
+		filename := c.Param("filename")
+
+		// Generate the signed URL for downloading the file
+		url, _, err := GenerateURL(filename, client) // Pass the initialized client
+		if err != nil {
+			if strings.Contains(err.Error(), "token expired") {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Token expired"})
+			} else if strings.Contains(err.Error(), "no keys") {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "No keys available"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			}
+			return
+		}
+
+		// Set appropriate headers for the file download
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+		c.Header("Content-Type", "application/octet-stream")
+
+		// Trigger the file download by redirecting the client to the signed URL
+		c.Redirect(http.StatusFound, url)
 	})
 
 	r.Run()
@@ -223,18 +177,24 @@ func main() {
 // 	return nil
 // }
 
-func GenerateDownloadURL(filename string, client *storage.Client) (string, error) {
-	// Set the expiration time to 5 minutes after the current time
-	expirationTime := time.Now().Add(5 * time.Minute)
+func GenerateURL(filename string, client *storage.Client) (string, string, error) {
+	// Set the expiration time to just a few seconds in the future
+	expirationTime := time.Now().Add(10 * time.Second) // Change the duration as needed
 
 	bucketName := os.Getenv("BUCKET_NAME")
 
-	url, err := cloudStorage.SignedURL(bucketName, filename, &cloudStorage.SignedURLOptions{
+	signedUrl, err := cloudStorage.SignedURL(bucketName, filename, &cloudStorage.SignedURLOptions{
 		GoogleAccessID: os.Getenv("FIREBASE_CLIENT_EMAIL"),
 		PrivateKey:     []byte(strings.Replace(string(os.Getenv("FIREBASE_PRIVATE_KEY")), "\\n", "\n", -1)),
 		Method:         "GET",
 		Expires:        expirationTime,
 	})
 
-	return url, err
+	if err != nil {
+		return "", "", err
+	}
+
+	rawURL := fmt.Sprintf("https://storage.googleapis.com/%s/%s", bucketName, filename)
+
+	return signedUrl, rawURL, err
 }
