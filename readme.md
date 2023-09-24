@@ -11,3 +11,4 @@ Proof of concept for firebase storage locked access rule.
 2. Run `make init` to initialize project
 3. See notion for .env
 4. Run `make run` to run the project
+5. See postman collection for documentation
