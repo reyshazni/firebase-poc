@@ -1,0 +1,46 @@
+{
+	"info": {
+		"_postman_id": "84406592-1e86-45b3-a6d3-6b496029b744",
+		"name": "firebase-poc",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "25051540"
+	},
+	"item": [
+		{
+			"name": "Download Signed",
+			"request": {
+				"method": "GET",
+				"header": []
+			},
+			"response": []
+		},
+		{
+			"name": "Download Unsigned",
+			"request": {
+				"method": "GET",
+				"header": []
+			},
+			"response": []
+		},
+		{
+			"name": "Get URL",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8080/url/Aegis.png",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"url",
+						"Aegis.png"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
