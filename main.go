@@ -28,7 +28,7 @@ func init() {
 	// Gunakan variabel lingkungan yang telah di-set
 	bucketName := os.Getenv("BUCKET_NAME")
 
-	// Define a map to store Firebase configuration
+	// Define map to firebase config
 	firebaseConfig := map[string]string{
 		"type":                        os.Getenv("FIREBASE_TYPE"),
 		"project_id":                  os.Getenv("FIREBASE_PROJECT_ID"),
@@ -43,7 +43,7 @@ func init() {
 		"universe_domain":             os.Getenv("FIREBASE_UNIVERSE_DOMAIN"),
 	}
 
-	// Marshal the Firebase configuration map to JSON
+	// Marshal firebase ke JSON
 	firebaseConfigJSON, err := json.Marshal(firebaseConfig)
 	if err != nil {
 		log.Fatalf("Failed to marshal Firebase configuration to JSON: %v", err)
@@ -53,16 +53,19 @@ func init() {
 		StorageBucket: bucketName,
 	}
 
+	// Inject config
 	opt := option.WithCredentialsJSON(firebaseConfigJSON)
 
 	ctx := context.Background()
 
-	app, err := firebase.NewApp(ctx, config, opt) // Initialize Firebase App
+	// Init Firebase App
+	app, err := firebase.NewApp(ctx, config, opt)
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	client, err = app.Storage(ctx) // Initialize Firebase Storage client
+	// Init Firebase Storage client
+	client, err := app.Storage(ctx)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -75,49 +78,13 @@ func init() {
 
 func main() {
 	r := gin.Default()
-	// Endpoint untuk upload file dengan service account
-	r.POST("/upload-signed", func(c *gin.Context) {
-		// Pastikan Anda memiliki autentikasi menggunakan serviceAccount.json
-		// Sebelum melakukan upload, Anda perlu memeriksa kredensial.
 
-		// Dalam endpoint ini, Anda dapat menerima file menggunakan multipart/form-data.
-		file, err := c.FormFile("file")
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": err.Error(),
-			})
-			return
-		}
-
-		// Baca file yang diupload
-		src, err := file.Open()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": err.Error(),
-			})
-			return
-		}
-		defer src.Close()
-
-		// Anda dapat menggunakan utils.DecodeBase64WithFormat jika diperlukan
-		// atau langsung mengambil data biner dari src.
-
-		// Lakukan proses upload menggunakan service account di sini.
-		// uploader.UploadFile(decodedData, object)
-
-		// Setelah upload selesai, kirimkan respons yang sesuai.
-		c.JSON(http.StatusOK, gin.H{
-			"message": "success",
-			"file":    file.Filename,
-		})
-	})
-
-	// Endpoint untuk mengunduh file tanpa autentikasi
+	// Endpoint untuk get raw url and signed url
 	r.GET("/url/:filename", func(c *gin.Context) {
 		// Dapatkan nama file dari parameter URL
 		filename := c.Param("filename")
 
-		signedURL, rawURL, err := GenerateURL(filename, client)
+		signedURL, rawURL, err := GenerateURL(filename, 30, client) // 30 second ttl biar bisa liat2 dulu
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -130,12 +97,39 @@ func main() {
 		})
 	})
 
+	// Endpoint untuk download signed url
 	r.GET("/download-signed/:filename", func(c *gin.Context) {
 		// Get the filename from the URL parameter
 		filename := c.Param("filename")
 
 		// Generate the signed URL for downloading the file
-		url, _, err := GenerateURL(filename, client) // Pass the initialized client
+		url, _, err := GenerateURL(filename, 5, client) // 5 second ttl karena langsung download
+		if err != nil {
+			if strings.Contains(err.Error(), "token expired") {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Token expired"})
+			} else if strings.Contains(err.Error(), "no keys") {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "No keys available"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			}
+			return
+		}
+
+		// Set appropriate headers for the file download
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+		c.Header("Content-Type", "application/octet-stream")
+
+		// Trigger the file download by redirecting the client to the signed URL
+		c.Redirect(http.StatusFound, url)
+	})
+
+	// Endpoint untuk download unsigned url
+	r.GET("/download-unsigned/:filename", func(c *gin.Context) {
+		// Get the filename from the URL parameter
+		filename := c.Param("filename")
+
+		// Generate the signed URL for downloading the file
+		_, url, err := GenerateURL(filename, 5, client) // 5 second ttl karena langsung download
 		if err != nil {
 			if strings.Contains(err.Error(), "token expired") {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "Token expired"})
@@ -158,28 +152,13 @@ func main() {
 	r.Run()
 }
 
-// UploadFile uploads an object
-// func (c *ClientUploader) UploadFile(decodedData []byte, object string) error {
-// 	ctx := context.Background()
+// Generate Signed URL menggunakan metode yang sama seperti di ethica-be
+func GenerateURL(filename string, ttlSecond int, client *storage.Client) (string, string, error) {
+	// Konversi ttlSecond ke time.Duration
+	expirationDuration := time.Duration(ttlSecond) * time.Second
 
-// 	ctx, cancel := context.WithTimeout(ctx, time.Second*50)
-// 	defer cancel()
-
-// 	// Upload an object with storage.Writer.
-// 	wc := c.cl.Bucket(c.bucketName).Object(object).NewWriter(ctx)
-// 	if _, err := wc.Write(decodedData); err != nil {
-// 		return fmt.Errorf("write: %v", err)
-// 	}
-// 	if err := wc.Close(); err != nil {
-// 		return fmt.Errorf("Writer.Close: %v", err)
-// 	}
-
-// 	return nil
-// }
-
-func GenerateURL(filename string, client *storage.Client) (string, string, error) {
 	// Set the expiration time to just a few seconds in the future
-	expirationTime := time.Now().Add(10 * time.Second) // Change the duration as needed
+	expirationTime := time.Now().Add(expirationDuration)
 
 	bucketName := os.Getenv("BUCKET_NAME")
 
