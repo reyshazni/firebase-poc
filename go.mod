@@ -3,6 +3,7 @@ module firebase-poc
 go 1.19
 
 require (
+	cloud.google.com/go/firestore v1.13.0
 	cloud.google.com/go/storage v1.33.0
 	firebase.google.com/go v3.13.0+incompatible
 	github.com/gin-gonic/gin v1.9.1
@@ -14,7 +15,6 @@ require (
 	cloud.google.com/go v0.110.6 // indirect
 	cloud.google.com/go/compute v1.23.0 // indirect
 	cloud.google.com/go/compute/metadata v0.2.3 // indirect
-	cloud.google.com/go/firestore v1.11.0 // indirect
 	cloud.google.com/go/iam v1.1.1 // indirect
 	cloud.google.com/go/longrunning v0.5.1 // indirect
 	github.com/bytedance/sonic v1.9.1 // indirect

@@ -7,7 +7,7 @@
 	},
 	"item": [
 		{
-			"name": "Download Signed",
+			"name": "[Url] Download Storag Signed",
 			"request": {
 				"method": "GET",
 				"header": []
@@ -15,7 +15,7 @@
 			"response": []
 		},
 		{
-			"name": "Download Unsigned",
+			"name": "[Url] Download Storage Unsigned",
 			"request": {
 				"method": "GET",
 				"header": []
@@ -23,7 +23,7 @@
 			"response": []
 		},
 		{
-			"name": "Get URL",
+			"name": "Get Storage URL",
 			"request": {
 				"method": "GET",
 				"header": [],
@@ -37,6 +37,63 @@
 					"path": [
 						"url",
 						"Aegis.png"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "[SDK] Add Firestore Data",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8080/data-firestore",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"data-firestore"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "[SDK] Get Firestore Data",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8080/data-firestore",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"data-firestore"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "[Url] Get Firestore Data Unsigned",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8080/data-firestore",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"data-firestore"
 					]
 				}
 			},
